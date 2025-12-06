@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Toplu Mail Gönderici</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+
+    <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-lg">
+        <h1 class="text-2xl font-bold mb-6 text-center text-blue-600">Toplu Mail Paneli</h1>
+        
+        <form id="mailForm" class="space-y-4">
+            
+            <div>
+                <label class="block text-sm font-bold mb-1">Konu Başlığı</label>
+                <input type="text" id="subject" class="w-full border p-2 rounded" placeholder="Kampanya Başlığı" required>
+            </div>
+
+            <div>
+                <label class="block text-sm font-bold mb-1">Mesaj İçeriği (HTML olabilir)</label>
+                <textarea id="message" rows="4" class="w-full border p-2 rounded" placeholder="Merhaba..." required></textarea>
+            </div>
+
+            <div class="border-2 border-dashed p-4 text-center bg-gray-50 rounded">
+                <p class="text-sm text-gray-500 mb-2">CSV Dosyanı Sürükle veya Seç</p>
+                <input type="file" id="csvFile" accept=".csv" class="w-full text-sm">
+                <p id="emailCount" class="text-green-600 text-xs mt-2 font-bold hidden">0 kişi bulundu.</p>
+            </div>
+
+            <button type="submit" id="sendBtn" class="w-full bg-blue-600 text-white p-3 rounded font-bold hover:bg-blue-700 transition">
+                GÖNDERİMİ BAŞLAT
+            </button>
+            
+            <p id="status" class="text-center text-sm mt-2 text-gray-600"></p>
+        </form>
+    </div>
+
+    <script>
+        let emailList = [];
+
+        // 1. CSV Dosyasını Okuma
+        document.getElementById('csvFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            Papa.parse(file, {
+                complete: function(results) {
+                    // İlk sütundaki mailleri al, boşları temizle
+                    emailList = results.data.map(row => row[0]).filter(email => email && email.includes('@'));
+                    
+                    const countText = document.getElementById('emailCount');
+                    countText.textContent = `${emailList.length} adet e-posta adresi hazır.`;
+                    countText.classList.remove('hidden');
+                },
+                header: false // Başlıksız basit liste varsayıyoruz
+            });
+        });
+
+        // 2. Form Gönderme (Backend'e İstek)
+        document.getElementById('mailForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const status = document.getElementById('status');
+            const btn = document.getElementById('sendBtn');
+
+            if (emailList.length === 0) {
+                alert('Lütfen geçerli bir CSV dosyası yükleyin.');
+                return;
+            }
+
+            // Butonu kilitle
+            btn.disabled = true;
+            btn.textContent = 'Gönderiliyor...';
+            status.textContent = 'İşlem başladı, lütfen bekleyin...';
+
+            const subject = document.getElementById('subject').value;
+            const message = document.getElementById('message').value;
+
+            try {
+                const response = await fetch('/api/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ emails: emailList, subject, message })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    status.textContent = 'Başarılı! Mailler kuyruğa alındı.';
+                    status.className = 'text-center text-sm mt-2 text-green-600 font-bold';
+                    alert('Gönderim Başarılı!');
+                } else {
+                    throw new Error(result.error || 'Hata oluştu');
+                }
+            } catch (error) {
+                console.error(error);
+                status.textContent = 'Hata: ' + error.message;
+                status.className = 'text-center text-sm mt-2 text-red-600 font-bold';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'GÖNDERİMİ BAŞLAT';
+            }
+        });
+    </script>
+</body>
+</html>
